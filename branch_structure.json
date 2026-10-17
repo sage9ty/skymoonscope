@@ -1,0 +1,18 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "fix/issue-380-add-time-series-animation-to-show-resource",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "fix/issue-380-add-time-series-animation-to-show-resource": "main",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "fix/issue-380-add-time-series-animation-to-show-resource",
+    "origin"
+  ]
+}
