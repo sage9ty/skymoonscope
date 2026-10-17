@@ -1,6 +1,10 @@
 /**
- * Command registry and matching logic behind the global (Cmd+K / Ctrl+K)
- * search overlay.
+ * Command registry and matching logic behind the global search overlay.
+ *
+ * The shortcut is platform-aware to avoid conflicting with the browser's own
+ * Cmd+K binding on macOS:
+ *   - macOS:   Ctrl+K  (Cmd+K is reserved by browsers for tab/search)
+ *   - Windows/Linux: Ctrl+K or Cmd+K
  *
  * Pure and DOM-free so the ranking rules can be unit tested directly.
  */
@@ -49,11 +53,54 @@ const BASE_COMMANDS = [
   },
 ];
 
-/** True when a keyboard event should open the global search overlay. */
-function isSearchShortcut(event) {
+/**
+ * Best-effort detection of macOS. In browsers `navigator.platform` has been the
+ * long-standing signal ("MacIntel", "MacPPC", "Mac68K"); `navigator.userAgent`
+ * is a fallback for environments where `platform` is unavailable. Both are
+ * safe to read in Node.js tests (`navigator` is simply undefined there).
+ *
+ * Exported so callers can pass a concrete value when they want deterministic
+ * behaviour (e.g. tests) instead of relying on the runtime user-agent.
+ */
+function defaultIsMac() {
+  if (typeof navigator !== 'undefined') {
+    if (typeof navigator.platform === 'string' && /Mac/i.test(navigator.platform)) {
+      return true;
+    }
+    if (typeof navigator.userAgent === 'string' && /Mac/i.test(navigator.userAgent)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * True when a keyboard event should open the global search overlay.
+ *
+ * The shortcut is platform-aware because macOS browsers reserve Cmd+K for their
+ * own tab/search UI, which would intercept the keystroke before it reached us.
+ * On macOS only Ctrl+K opens the overlay; on Windows and Linux both Ctrl+K and
+ * Cmd+K work (Cmd is the Windows key there and rarely collides).
+ *
+ * `options.isMac` lets tests drive both branches deterministically; in normal
+ * use it defaults to {@link defaultIsMac}.
+ *
+ * @param {KeyboardEvent | null | undefined} event
+ * @param {{ isMac?: boolean }} [options]
+ * @returns {boolean}
+ */
+function isSearchShortcut(event, options = {}) {
   if (!event || typeof event.key !== 'string') return false;
-  if (!(event.metaKey || event.ctrlKey)) return false;
-  // Cmd+Alt+K and friends belong to other tools.
+  const isMac = typeof options.isMac === 'boolean' ? options.isMac : defaultIsMac();
+
+  // On macOS ignore Cmd (metaKey) entirely so the browser keeps Cmd+K for its
+  // own tab/search; only Ctrl+K opens the overlay.
+  if (isMac) {
+    if (!event.ctrlKey) return false;
+  } else {
+    if (!(event.metaKey || event.ctrlKey)) return false;
+  }
+  // Cmd+Alt+K / Ctrl+Alt+K and friends belong to other tools.
   if (event.altKey) return false;
   return event.key.toLowerCase() === 'k';
 }
@@ -337,6 +384,73 @@ function moveHighlightTo(key, current, length) {
   return normalizeHighlight(current, length);
 }
 
+/**
+ * Internal command `group` values mapped to display categories.
+ *
+ * Order matters for {@link groupResultsByCategory}: the entries here define
+ * the canonical display order (pages → functions → settings).
+ */
+const CATEGORY_ORDER = [
+  { category: 'pages', groups: ['Navigation'] },
+  { category: 'functions', groups: ['Contract functions'] },
+  { category: 'settings', groups: ['Preferences'] },
+];
+
+/** Human-readable heading shown above each category bucket. */
+const CATEGORY_LABELS = {
+  pages: 'Pages',
+  functions: 'Functions',
+  settings: 'Settings',
+};
+
+/**
+ * Map an internal `group` string to a `SearchCategory`.
+ *
+ * Unknown or missing groups fall back to `'pages'` so they still render in a
+ * sensible place instead of being dropped.
+ *
+ * @param {string} group
+ * @returns {'pages' | 'functions' | 'settings'}
+ */
+function categoryForGroup(group) {
+  const value = String(group == null ? '' : group);
+  for (const entry of CATEGORY_ORDER) {
+    if (entry.groups.includes(value)) return entry.category;
+  }
+  return 'pages';
+}
+
+/**
+ * Group a flat ordered results array into display categories.
+ *
+ * Empty categories are omitted. Categories always appear in the order
+ * pages → functions → settings so the list stays stable as the query narrows.
+ *
+ * @param {Array<{ group?: string }>} results
+ * @returns {Array<{ category: 'pages' | 'functions' | 'settings', label: string, commands: object[] }>}
+ */
+function groupResultsByCategory(results) {
+  const list = Array.isArray(results) ? results : [];
+  const buckets = new Map();
+  for (const entry of CATEGORY_ORDER) {
+    buckets.set(entry.category, []);
+  }
+
+  for (const command of list) {
+    const category = categoryForGroup(command && command.group);
+    buckets.get(category).push(command);
+  }
+
+  return CATEGORY_ORDER
+    .map((entry) => entry.category)
+    .filter((category) => buckets.get(category).length > 0)
+    .map((category) => ({
+      category,
+      label: CATEGORY_LABELS[category],
+      commands: buckets.get(category),
+    }));
+}
+
 module.exports = {
   BASE_COMMANDS,
   isSearchShortcut,
@@ -351,6 +465,7 @@ module.exports = {
   normalizeHighlight,
   optionIdFor,
   SEARCH_OPTION_ID_PREFIX,
+  defaultIsMac,
   categoryForGroup,
   groupResultsByCategory,
 };

@@ -1,5 +1,5 @@
 /**
- * Search analytics for the global (Cmd+K / Ctrl+K) search overlay.
+ * Search analytics for the global search overlay.
  *
  * Records which queries the user typed and which commands they selected, then
  * surfaces the most-used ones so the overlay can show "recent / popular" hints.

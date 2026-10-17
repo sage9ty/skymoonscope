@@ -1,5 +1,5 @@
-// searchCommands.test.cjs — unit tests for the Cmd+K global search overlay
-// Covers search behavior from Issues #623 and #387
+// searchCommands.test.cjs — unit tests for the global search overlay
+// Covers search behavior from Issues #623, #387 and #396 (platform-aware shortcut)
 // Runs with: node --test ./lib/searchCommands.test.cjs
 
 'use strict';
@@ -17,35 +17,104 @@ const {
   buildParamHint,
   buildFunctionSubtitle,
   moveHighlight,
+  categoryForGroup,
+  groupResultsByCategory,
 } = require('./searchCommands');
 
 // ── Shortcut detection ──────────────────────────────────────────────────────
+//
+// The shortcut is platform-aware (issue #396): macOS browsers reserve Cmd+K
+// for their own tab/search, so on macOS only Ctrl+K opens the overlay.
+// On Windows/Linux both Ctrl+K and Cmd+K work.
 
-test('isSearchShortcut: matches Ctrl+K and Cmd+K', () => {
-  assert.equal(isSearchShortcut({ key: 'k', ctrlKey: true }), true);
-  assert.equal(isSearchShortcut({ key: 'k', metaKey: true }), true);
+test('isSearchShortcut (non-mac): matches Ctrl+K and Cmd+K', () => {
+  assert.equal(isSearchShortcut({ key: 'k', ctrlKey: true }, { isMac: false }), true);
+  assert.equal(isSearchShortcut({ key: 'k', metaKey: true }, { isMac: false }), true);
 });
 
-test('isSearchShortcut: is case insensitive (Shift+Cmd+K still opens)', () => {
-  assert.equal(isSearchShortcut({ key: 'K', metaKey: true, shiftKey: true }), true);
+test('isSearchShortcut (mac): matches Ctrl+K but NOT Cmd+K', () => {
+  // Cmd+K is reserved by macOS browsers — the overlay must not grab it.
+  assert.equal(isSearchShortcut({ key: 'k', ctrlKey: true }, { isMac: true }), true);
+  assert.equal(isSearchShortcut({ key: 'k', metaKey: true }, { isMac: true }), false);
+  // Even Ctrl+Cmd+K should not open, since Cmd is present and Ctrl alone is the
+  // required modifier — but having both is ambiguous, so we only accept Ctrl.
+  assert.equal(isSearchShortcut({ key: 'k', ctrlKey: true, metaKey: true }, { isMac: true }), true);
+});
+
+test('isSearchShortcut: is case insensitive (Shift+Ctrl+K still opens)', () => {
+  assert.equal(isSearchShortcut({ key: 'K', ctrlKey: true, shiftKey: true }, { isMac: false }), true);
+  assert.equal(isSearchShortcut({ key: 'K', ctrlKey: true, shiftKey: true }, { isMac: true }), true);
 });
 
 test('isSearchShortcut: ignores a bare k and other modifier combos', () => {
-  assert.equal(isSearchShortcut({ key: 'k' }), false);
-  assert.equal(isSearchShortcut({ key: 'k', altKey: true, metaKey: true }), false);
-  assert.equal(isSearchShortcut({ key: 'j', ctrlKey: true }), false);
+  assert.equal(isSearchShortcut({ key: 'k' }, { isMac: false }), false);
+  assert.equal(isSearchShortcut({ key: 'k' }, { isMac: true }), false);
+  assert.equal(isSearchShortcut({ key: 'k', altKey: true, metaKey: true }, { isMac: false }), false);
+  assert.equal(isSearchShortcut({ key: 'k', altKey: true, ctrlKey: true }, { isMac: true }), false);
+  assert.equal(isSearchShortcut({ key: 'j', ctrlKey: true }, { isMac: false }), false);
 });
 
 test('isSearchShortcut: tolerates missing or malformed events', () => {
   assert.equal(isSearchShortcut(null), false);
   assert.equal(isSearchShortcut(undefined), false);
   assert.equal(isSearchShortcut({}), false);
+  // Options do not rescue a bad event.
+  assert.equal(isSearchShortcut(null, { isMac: true }), false);
+  assert.equal(isSearchShortcut({}, { isMac: false }), false);
 });
 
 test('isDismissShortcut: matches Escape only', () => {
   assert.equal(isDismissShortcut({ key: 'Escape' }), true);
   assert.equal(isDismissShortcut({ key: 'Enter' }), false);
   assert.equal(isDismissShortcut(null), false);
+});
+
+// ── Result grouping (categoryForGroup / groupResultsByCategory) ─────────────
+
+test('categoryForGroup: maps known groups to the right category', () => {
+  assert.equal(categoryForGroup('Navigation'), 'pages');
+  assert.equal(categoryForGroup('Contract functions'), 'functions');
+  assert.equal(categoryForGroup('Preferences'), 'settings');
+});
+
+test('categoryForGroup: unknown or missing groups fall back to pages', () => {
+  assert.equal(categoryForGroup('Something else'), 'pages');
+  assert.equal(categoryForGroup(''), 'pages');
+  assert.equal(categoryForGroup(undefined), 'pages');
+  assert.equal(categoryForGroup(null), 'pages');
+});
+
+test('groupResultsByCategory: groups results and omits empty categories', () => {
+  const results = [
+    { id: 'nav-explorer', group: 'Navigation', title: 'Explorer', subtitle: '', keywords: [] },
+    { id: 'nav-settings', group: 'Preferences', title: 'Settings', subtitle: '', keywords: [] },
+    { id: 'fn-transfer', group: 'Contract functions', title: 'transfer', subtitle: '', keywords: [] },
+  ];
+  const groups = groupResultsByCategory(results);
+  assert.equal(groups.length, 3, 'all three categories present');
+  assert.equal(groups[0].category, 'pages');
+  assert.equal(groups[1].category, 'functions');
+  assert.equal(groups[2].category, 'settings');
+  assert.equal(groups[0].commands.length, 1);
+  assert.equal(groups[1].commands.length, 1);
+  assert.equal(groups[2].commands.length, 1);
+});
+
+test('groupResultsByCategory: omits categories with no commands', () => {
+  const results = [
+    { id: 'nav-explorer', group: 'Navigation', title: 'Explorer', subtitle: '', keywords: [] },
+    { id: 'nav-history', group: 'Navigation', title: 'History', subtitle: '', keywords: [] },
+  ];
+  const groups = groupResultsByCategory(results);
+  assert.equal(groups.length, 1, 'only pages category present');
+  assert.equal(groups[0].category, 'pages');
+  assert.equal(groups[0].commands.length, 2);
+});
+
+test('groupResultsByCategory: tolerates a non-array or empty input', () => {
+  assert.deepEqual(groupResultsByCategory([]), []);
+  assert.deepEqual(groupResultsByCategory(null), []);
+  assert.deepEqual(groupResultsByCategory(undefined), []);
 });
 
 // ── Registry ────────────────────────────────────────────────────────────────
@@ -301,5 +370,7 @@ test('filterCommands: searching by param name surfaces matching functions', () =
   });
   const results = filterCommands(registry, 'account');
   assert.ok(results.some((c) => c.id === 'fn-balance'), 'balance should match "account" search');
-  assert.ok(!results.some((c) => c.id === 'fn-transfer'), 'transfer should NOT match "account" search');
+  // `balance` has an exact keyword hit on "account"; `transfer` only matches
+  // fuzzily ("account" ≈ "amount", edit distance 2), so balance must rank first.
+  assert.equal(results[0].id, 'fn-balance', 'exact param-name match should outrank fuzzy match');
 });

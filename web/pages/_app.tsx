@@ -15,7 +15,7 @@ export default function App({ Component, pageProps }: AppProps) {
           <WalletProvider>
             <OfflineBanner />
             <Component {...pageProps} />
-            {/* Mounted app-wide so Cmd+K / Ctrl+K works on every page. */}
+            {/* Mounted app-wide so the search shortcut (Ctrl+K / Cmd+K) works on every page. */}
             <GlobalSearchModal />
           </WalletProvider>
         </NetworkProvider>

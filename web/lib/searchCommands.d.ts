@@ -26,8 +26,26 @@ export interface SearchResultGroup {
 
 export declare const BASE_COMMANDS: SearchCommand[];
 
-/** True when the event is Cmd+K / Ctrl+K. */
-export declare function isSearchShortcut(event: KeyboardEvent | null | undefined): boolean;
+/**
+ * Best-effort macOS detection (navigator.platform / navigator.userAgent).
+ * Exported so tests can pass a concrete value to {@link isSearchShortcut}.
+ */
+export declare function defaultIsMac(): boolean;
+
+/**
+ * True when the event should open the global search overlay.
+ *
+ * Platform-aware to avoid the macOS browser Cmd+K conflict:
+ *   - macOS: only Ctrl+K opens the overlay (Cmd+K is reserved by browsers).
+ *   - Windows/Linux: Ctrl+K or Cmd+K both open the overlay.
+ *
+ * Pass `isMac` to drive both branches deterministically (e.g. in tests); in
+ * normal use it defaults to {@link defaultIsMac}.
+ */
+export declare function isSearchShortcut(
+  event: KeyboardEvent | null | undefined,
+  options?: { isMac?: boolean },
+): boolean;
 
 /** True when the event is Escape. */
 export declare function isDismissShortcut(event: KeyboardEvent | null | undefined): boolean;

@@ -34,8 +34,10 @@ export const SEARCH_COMMAND_EVENT = 'sky-moon-scope:search-command';
 /**
  * App-wide quick search overlay.
  *
- * Mounted once in `_app`, so Cmd+K / Ctrl+K works on every page without moving
- * the mouse to the header.
+ * Mounted once in `_app`, so the search shortcut works on every page without
+ * moving the mouse to the header. The shortcut is platform-aware (see
+ * `isSearchShortcut`): Ctrl+K on macOS (Cmd+K is reserved by the browser for
+ * tab/search), and Ctrl+K or Cmd+K on Windows/Linux.
  *
  * Features:
  * - Search history: recently run commands surface at the top when the query is

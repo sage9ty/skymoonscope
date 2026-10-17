@@ -47,9 +47,13 @@ Flow measures real DOM nodes.
 
 ---
 
-## 2. Global search shortcut (issue #623)
+## 2. Global search shortcut (issues #623, #396)
 
-`Cmd+K` / `Ctrl+K` opens a quick-search overlay from anywhere in the app.
+The search overlay opens with a platform-aware keyboard shortcut:
+
+- **macOS**: `Ctrl+K` — Cmd+K is reserved by macOS browsers for tab/search, so
+  the overlay listens for Ctrl+K only to avoid the conflict.
+- **Windows / Linux**: `Ctrl+K` or `Cmd+K` (the Windows key) both open it.
 
 | File | Role |
 | --- | --- |
@@ -58,6 +62,13 @@ Flow measures real DOM nodes.
 | `components/GlobalSearchModal.tsx` | The overlay; mounted once in `pages/_app.tsx` |
 | `lib/searchCommands.test.cjs` | Unit tests for matching, keyboard navigation, and parameter hints |
 | `lib/searchHistory.test.cjs` | Unit tests for history push/dedup/remove/clear |
+
+Shortcut detection lives in `isSearchShortcut(event, { isMac })` in
+`lib/searchCommands.js`. It uses `defaultIsMac()` (navigator.platform /
+navigator.userAgent) at runtime; tests pass an explicit `isMac` boolean to drive
+both branches deterministically. The header search button shows the
+platform-appropriate hint (`⌃K` on macOS, `Ctrl K` elsewhere) resolved after
+mount to avoid SSR hydration mismatches.
 
 The listener sits on `window` so the shortcut fires regardless of focus.
 `Escape`, the backdrop and the close button all dismiss it; `↑`/`↓` move the
@@ -207,7 +218,7 @@ and screen-reader users can drive every control without a mouse.
 | `components/ResourceHeatmap.tsx` | Tab bar: `←` / `→` (move between tabs), `Home` / `End` (jump to first / last). ARIA: `role=tablist`, `role=tab`, `aria-selected`, roving `tabIndex`. |
 | `components/FunctionSidebar.tsx` | Function list: `↑` / `↓` (move selection), `Home` / `End` (jump to first / last), `Enter` / `Space` (confirm selection). ARIA: `role=listbox` / `role=option`, `aria-selected`, roving `tabIndex`. |
 | `components/NetworkSwitcher.tsx` | Network list: `↑` / `↓` (move focus), `Home` / `End` (jump), `Enter` / `Space` (select & close), `Escape` (close & return focus to trigger). ARIA: roving `tabIndex`, `focus:` styles on unselected options. |
-| `components/GlobalSearchModal.tsx` | Already fully keyboard-accessible (`↑` / `↓`, `Enter`, `Escape`, `Cmd+K` / `Ctrl+K`) — no changes needed. |
+| `components/GlobalSearchModal.tsx` | Already fully keyboard-accessible (`↑` / `↓`, `Enter`, `Escape`, `Ctrl+K` / `Cmd+K`) — no changes needed. |
 | `components/NutritionLabel.tsx` | Gas breakdown toggle is a native `<button>` with `aria-expanded` / `aria-controls` — no changes needed. |
 | `components/StakingCalculator.tsx` | All compound-frequency pills and preset buttons are native `<button>` elements — keyboard-accessible by default. |
 

@@ -30,8 +30,10 @@ interface HeaderNavProps {
   setTab: (tab: NavTab) => void;
 }
 
-/** Ask the app-wide overlay to open, same as pressing Cmd+K. */
+/** Ask the app-wide overlay to open, same as pressing the search shortcut. */
 function openGlobalSearch() {
+  // Ctrl+K opens the overlay on every platform (see isSearchShortcut), so the
+  // synthesized event uses ctrlKey regardless of OS.
   window.dispatchEvent(
     new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true }),
   );
@@ -45,6 +47,15 @@ export function HeaderNav({ tab, setTab }: HeaderNavProps) {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Resolve the platform only after mount so the server-rendered markup
+  // matches the first client render (navigator is unavailable on the server).
+  // macOS browsers reserve Cmd+K for tab/search, so the overlay uses Ctrl+K
+  // there; on Windows/Linux both Ctrl+K and Cmd+K work, but Ctrl+K is the
+  // conventional primary shortcut, so we hint at that everywhere and skip the
+  // ⌘ symbol on macOS to avoid implying Cmd+K works there.
+  const isMac = mounted && typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform ?? navigator.userAgent ?? '');
+  const searchKbdHint = isMac ? '⌃K' : 'Ctrl K';
 
   // Close drawer on Escape key press
   useEffect(() => {
@@ -103,7 +114,7 @@ export function HeaderNav({ tab, setTab }: HeaderNavProps) {
             <Search className="h-4 w-4" />
             <span className="hidden lg:inline">Search</span>
             <kbd className="rounded border border-slate-700 bg-slate-950 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
-              ⌘K
+              {searchKbdHint}
             </kbd>
           </button>
           <Link
